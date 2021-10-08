@@ -24,7 +24,7 @@ from homeassistant.helpers.typing import (
 import requests
 import voluptuous as vol
 
-from .const import API_URL, BASE_API_URL, CONF_API_KEY, CONF_API_SECRET
+from .const import API_URL, CONF_API_KEY, CONF_API_SECRET
 
 _LOGGER = logging.getLogger(__name__)
 # Time between updating data from GitHub
