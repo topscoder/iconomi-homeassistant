@@ -1,4 +1,5 @@
 """Iconomi sensor platform."""
+
 import base64
 from datetime import timedelta
 import hashlib
@@ -24,10 +25,6 @@ import requests
 import voluptuous as vol
 
 from .const import API_URL, BASE_API_URL, CONF_API_KEY, CONF_API_SECRET
-
-# API_URL = "https://api.iconomi.com"
-# API_SECRET = "<YOUR_SECRET>"
-# API_KEY = "<YOUR_KEY>"
 
 _LOGGER = logging.getLogger(__name__)
 # Time between updating data from GitHub

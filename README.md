@@ -2,6 +2,10 @@
 
 ## Installation
 
+### Iconomi
+Create an API key in your Iconomi account. Go to https://www.iconomi.com/settings/api-keys and click "Create API Key". Give it a fancy name and click "Create".
+
+### Home Assistant
 ```yaml
 # Example configuration.yaml entry
 sensor:
