@@ -2,7 +2,7 @@
   "codeowners": ["@topscoder"],
   "config_flow": false,
   "dependencies": [],
-  "documentation": "https://github.com/topscoder/hass_iconomi/",
+  "documentation": "https://github.com/topscoder/iconomi-homeassistant",
   "domain": "iconomi",
   "iot_class": "cloud_polling",
   "name": "Iconomi Integration",
