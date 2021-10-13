@@ -1,138 +1,151 @@
 """Iconomi sensor platform."""
-
-import base64
-from datetime import timedelta
-import hashlib
-import hmac
+import asyncio
 import json
 import logging
+import base64
+import hashlib
+import hmac
+import re
 import time
-from typing import Any, Callable, Dict, Optional
-import unittest
+import voluptuous as vol
+import aiohttp
+from datetime import timedelta
 
-from aiohttp import ClientError
 from homeassistant.components.sensor import PLATFORM_SCHEMA
-from homeassistant.const import ATTR_NAME, CONF_ACCESS_TOKEN
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.typing import (
-    ConfigType,
-    DiscoveryInfoType,
-    HomeAssistantType,
+from homeassistant.helpers.discovery import async_load_platform
+from .const import (
+    DOMAIN,
+    API_URL,
+    CONF_ATTRIBUTION,
+    CONF_NAME,
+    CONF_API_KEY,
+    CONF_API_SECRET,
+    DEFAULT_SCAN_INTERVAL,
 )
-import requests
-import voluptuous as vol
 
-from .const import API_URL, CONF_API_KEY, CONF_API_SECRET
+REQUIREMENTS = []
 
 _LOGGER = logging.getLogger(__name__)
-# Time between updating data from GitHub
-SCAN_INTERVAL = timedelta(minutes=10)
+
+DEFAULT_NAME = "Iconomi Performance"
+DEFAULT_ICON = "mdi:currency-btc"
+
+SCAN_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_ACCESS_TOKEN): cv.string,
-        vol.Required(CONF_API_KEY): cv.string,
-        vol.Required(CONF_API_SECRET): cv.string,
-        # vol.Required(CONF_API_URL): cv.url,
+        vol.Required(CONF_NAME, default="iconomi"): cv.string,
+        vol.Required(CONF_API_KEY, default="Required api_key is missing."): cv.string,
+        vol.Required(
+            CONF_API_SECRET, default="Required api_secret is missing."
+        ): cv.string,
+        vol.Required("datatype", default="user_balance"): cv.string,
     }
 )
 
-async def async_setup_platform(
-    hass: HomeAssistantType,
-    config: ConfigType,
-    async_add_entities: Callable,
-    discovery_info: Optional[DiscoveryInfoType] = None,
-) -> None:
-    """Set up the sensor platform."""
-    #session = async_get_clientsession(hass)
-    # github = GitHubAPI(session, "requester", oauth_token=config[CONF_ACCESS_TOKEN])
-    # sensors = [GitHubRepoSensor(github, repo) for repo in config[CONF_REPOS]]
-    sensors = [IconomiSensor(config[CONF_API_KEY], config[CONF_API_SECRET])]
-    async_add_entities(sensors, update_before_add=True)
+class IconomiConfig(object):
+    name: str
+    api_key: str
+    api_secret: str
+    datatype: str
+
+    def __init__(self, config) -> None:
+        self.name = config.get(CONF_NAME)
+        self.api_key = config.get(CONF_API_KEY)
+        self.api_secret = config.get(CONF_API_SECRET)
+        self.datatype = config.get("datatype")
+
+@asyncio.coroutine
+def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
+    iconomi_config = IconomiConfig(config)
+    async_add_devices([IconomiSensor(hass, iconomi_config)], update_before_add=True)
+
+async def async_get_pdata(self, endpoint):
+    json_resp = {}
+    jsonPayload = ""
+    method = "GET"
+    timestamp = str(int(time.time() * 1000.0))
+
+    requestHeaders = {
+        "ICN-API-KEY": self._config.api_key,
+        "ICN-SIGN": self.generate_signature(jsonPayload, method, endpoint, timestamp),
+        "ICN-TIMESTAMP": timestamp,
+    }
+
+    url = f"{API_URL}{endpoint}"
+
+    async with self._session.get(
+        url, headers=requestHeaders, verify_ssl=False
+    ) as response:
+        rsp1 = await response.text()
+        json_resp = json.loads(rsp1)
+
+    return json_resp
 
 
 class IconomiSensor(Entity):
-    """Representation of an Iconomi API sensor."""
-
-    def __init__(self, api_key: str, api_secret: str):
-        super().__init__()
-
-        self._name = "Iconomi API"
-        self._api_key = api_key
-        self._api_secret = api_secret
+    def __init__(self, hass, iconomi_config: IconomiConfig):
+        """Initialize the sensor."""
+        self._hass = hass
+        self._name = iconomi_config.name
+        self._config = iconomi_config
         self._state = None
-        self._available = True
+        self._pdata = []
+        self._icon = DEFAULT_ICON
+        self._attr = {}
+        self._attr["provider"] = CONF_ATTRIBUTION
+        self._session = async_get_clientsession(hass)
 
     @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return self._name
+    def device_state_attributes(self):
+        return self._attr
 
-    # @property
-    # def unique_id(self) -> str:
-    #     """Return the unique ID of the sensor."""
-    #     return self.repo
+    @asyncio.coroutine
+    async def async_update(self):
 
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._available
+        endpoint = "/v1/user/balance"
 
-    @property
-    def state(self) -> Optional[str]:
+        try:
+            pdata = await async_get_pdata(self, endpoint)
+        except Exception as ex:
+            pdata = "No data returned from API"
+            _LOGGER.error(ex)
+
+        self._pdata = pdata
+        self._attr["raw"] = pdata
+
+        # Calc sum of balances and set as state value
+        value_usd = 0
+        for item in pdata["daaList"]:
+            value_usd = value_usd + float(item["value"])
+
+        # Also add crypto values
+        for asset in pdata["assetList"]:
+            value_usd = value_usd + float(asset["value"])
+
+        self._state = round(value_usd, 2)
         return self._state
 
     @property
-    def device_state_attributes(self) -> Dict[str, Any]:
-        return self.attrs
+    def name(self):
+        return self._name
 
-    async def async_update(self):
-        try:            
-            self.attrs["strategies"] = await self.get('/v1/strategies')
-            self.attrs["user_activity"] = await self.get('/v1/user/activity')
-            
-            # Set state to short commit sha.
-            self._state = str(int(time.time() * 1000.0)) # FIXME Pick something which represents the current state (datetime, current value, )
-            self._available = True
-        except (ClientError):
-            self._available = False
-            _LOGGER.exception("Error retrieving data from Iconomi.")
+    @property
+    def state(self):
+        return self._state
 
-    def generate_signature(self, payload, request_type, request_path, timestamp): 
-        data = ''.join([timestamp, request_type.upper(), request_path, payload]).encode()
-        signed_data = hmac.new(self._api_secret.encode(), data, hashlib.sha512)
-        return base64.b64encode(signed_data.digest())
+    @property
+    def icon(self):
+        return DEFAULT_ICON
 
-    def get(self, api):      
-        self.call('GET', api, '')
-
-    def post(self, api, payload):
-        self.call('POST', api, payload)
-        
-    def call(self, method, api, payload):
-        timestamp = str(int(time.time() * 1000.0))
-
-        jsonPayload = payload
-        if method == 'POST':
-          jsonPayload = json.dumps(payload)
-
-        requestHeaders = { 
-            'ICN-API-KEY' : self._api_key,
-            'ICN-SIGN' : self.generate_signature(jsonPayload, method, api, timestamp),
-            'ICN-TIMESTAMP' : timestamp
-        }
-
-        if method == 'GET': 
-          response = requests.get(API_URL + api, headers = requestHeaders)
-          if response.status_code == 200:
-            _LOGGER.exception(json.dumps(json.loads(response._content), indent=4, sort_keys=True))
-          else:
-            _LOGGER.exception('Request did not succeed: ' + response.reason)
-        elif method == 'POST':
-          response = requests.post(API_URL + api, json = payload, headers = requestHeaders)
-          if response.status_code == 200:
-            _LOGGER.exception(json.dumps(json.loads(response._content), indent=4, sort_keys=True))
-          else:
-            _LOGGER.exception('Request did not succeed: ' + response.reason)
+    def generate_signature(self, payload, request_type, request_path, timestamp):
+        """Generate signature for private (user specific) API calls"""
+        data = "".join([timestamp, request_type.upper(), request_path, payload])
+        signed_data = hmac.new(
+            self._config.api_secret.encode(), data.encode(), hashlib.sha512
+        )
+        base64_encoded_data = base64.b64encode(signed_data.digest())
+        return base64_encoded_data.decode("utf-8")
