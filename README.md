@@ -2,7 +2,7 @@
 
 This sensor integrates your Iconomi portfolio value into Home Assistant. As this is a sensor, HA will handle the history and graphs for you :)
 
-![Image of Iconomi card](https://github.com/topscoder/iconomi-homeassistant/blob/6782c9ef90761affe6c58511af636704de9937fa/.github/example.png)
+![Image of Iconomi card](https://github.com/topscoder/iconomi-homeassistant/blob/main/.github/example.png)
 
 ## Installation
 
