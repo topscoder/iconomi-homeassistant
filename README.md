@@ -2,6 +2,8 @@
 
 This sensor integrates your Iconomi portfolio value into Home Assistant. As this is a sensor, HA will handle the history and graphs for you :)
 
+![Image of Iconomi card](https://github.com/topscoder/iconomi-homeassistant/blob/6782c9ef90761affe6c58511af636704de9937fa/.github/example.png)
+
 ## Installation
 
 Create an API key in your Iconomi account. Go to https://www.iconomi.com/settings/api-keys and click "Create API Key". Give it a fancy name and click "Create". NOTE: Your API Secret will only be shown ONCE. So copy and store it safely in your digital vault.
